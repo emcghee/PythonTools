@@ -1,0 +1,9 @@
+# Python Tools
+alias random="python <PATH>/PythonTools/randomString.py"
+alias randomKey="python <PATH>/PythonTools/randomKey.py"
+alias aes="python <PATH>/PythonTools/aes.py"
+alias length="python <PATH>/PythonTools/length.py"
+alias guid="python <PATH>/PythonTools/guid.py"
+alias xor="python <PATH>/PythonTools/xor.py"
+alias hex="python <PATH>/PythonTools/hex.py"
+alias unhex="python <PATH>/PythonTools/hex.py --unhex"
