@@ -12,7 +12,7 @@ def parseArguments():
 def main(args):
     inputHash = args.hash
     hash = new('md4', inputHash.encode('utf-16le')).digest()
-    print(hexlify(hash).decode())
+    print('aad3b435b51404eeaad3b435b51404ee:' + hexlify(hash).decode())
 
 if __name__ == '__main__':
     args = parseArguments()
