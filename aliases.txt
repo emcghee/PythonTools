@@ -20,3 +20,6 @@ alias xor='python <PATH>/PythonTools/xor.py'
 alias null='python <PATH>/PythonTools/null.py'
 alias randomize='python <PATH>/PythonTools/randomize.py'
 alias jwt='python <PATH>/PythonTools/jwt.py'
+
+# Linux
+alias pc='python /mnt/hgfs/Github/PythonTools/proxychains.py'
