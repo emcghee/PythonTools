@@ -30,7 +30,7 @@ def main(args):
     # and not showLAB
     showUNFORMATTED = not showCS and not showGP and not showNH and not showPWN and not showREDIR and not showS1 and not showOTHER and not showALL
 
-    process = Popen("tailscale status", stdout=PIPE)
+    process = Popen(["tailscale", "status"], stdout=PIPE)
     process.wait()
     stdout = process.stdout.read().decode()
     stdoutSplit = stdout.split('\n')

@@ -1,15 +1,44 @@
 #!/usr/bin/env python3
 """ProxyChains Manager Script"""
 
+import os
 import sys
 import re
 import subprocess
 from pathlib import Path
 
 
-CONFIG = "/etc/proxychains4.conf"
+def find_config():
+    """Locate the proxychains config, following proxychains4's own lookup order."""
+    env_path = os.environ.get('PROXYCHAINS_CONF_FILE')
+    candidates = []
+    if env_path:
+        candidates.append(Path(env_path))
+    candidates.extend([
+        Path.cwd() / 'proxychains.conf',
+        Path.home() / '.proxychains' / 'proxychains.conf',
+        Path('/etc/proxychains.conf'),
+        Path('/etc/proxychains4.conf'),
+        Path('/usr/local/etc/proxychains.conf'),
+        Path('/opt/homebrew/etc/proxychains.conf'),
+    ])
+    for p in candidates:
+        if p.is_file():
+            return str(p)
+    print("Error: could not find proxychains config in any standard location:", file=sys.stderr)
+    for p in candidates:
+        print(f"  {p}", file=sys.stderr)
+    sys.exit(1)
+
+
+CONFIG = find_config()
 
 PROXY_TYPES = {'socks4', 'socks5', 'http', 'https'}
+
+
+def needs_sudo(path):
+    """Return True if we can't write the file as the current user."""
+    return not os.access(path, os.W_OK)
 
 
 def show_help():
@@ -40,8 +69,11 @@ def show_help():
 
 
 def read_config():
-    """Read configuration file with sudo"""
+    """Read configuration file (using sudo only when needed)."""
     try:
+        if os.access(CONFIG, os.R_OK):
+            with open(CONFIG, 'r') as f:
+                return f.read().splitlines()
         result = subprocess.run(
             ['sudo', 'cat', CONFIG],
             capture_output=True,
@@ -49,15 +81,19 @@ def read_config():
             check=True
         )
         return result.stdout.splitlines()
-    except subprocess.CalledProcessError as e:
-        print(f"Error reading config: {e}", file=sys.stderr)
+    except (subprocess.CalledProcessError, OSError) as e:
+        print(f"Error reading config {CONFIG}: {e}", file=sys.stderr)
         sys.exit(1)
 
 
 def write_config(lines):
-    """Write configuration file with sudo"""
+    """Write configuration file (using sudo only when needed)."""
+    content = '\n'.join(lines) + '\n'
     try:
-        content = '\n'.join(lines) + '\n'
+        if not needs_sudo(CONFIG):
+            with open(CONFIG, 'w') as f:
+                f.write(content)
+            return
         process = subprocess.Popen(
             ['sudo', 'tee', CONFIG],
             stdin=subprocess.PIPE,
@@ -68,7 +104,7 @@ def write_config(lines):
         if process.returncode != 0:
             raise Exception(f"tee command failed with code {process.returncode}")
     except Exception as e:
-        print(f"Error writing config: {e}", file=sys.stderr)
+        print(f"Error writing config {CONFIG}: {e}", file=sys.stderr)
         sys.exit(1)
 
 
@@ -336,7 +372,7 @@ def list_proxies():
     start_idx, end_idx = find_proxylist_section(lines)
 
     print()
-    print("Current ProxyList configuration:")
+    print(f"Current ProxyList configuration: ({CONFIG})")
     print("================================")
 
     if start_idx is None:
